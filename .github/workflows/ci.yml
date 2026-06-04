@@ -1,0 +1,46 @@
+# TalentFlow AI — CI (no Vercel; frontend targets Netlify, backend targets Render)
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend compile
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/talentflow-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Compile
+        run: chmod +x mvnw && ./mvnw -q -DskipTests compile
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/talentflow-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/talentflow-web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Build
+        env:
+          # Placeholder for CI; production value set in Netlify
+          VITE_API_BASE_URL: https://placeholder.onrender.com/api/v1
+        run: npm run build
