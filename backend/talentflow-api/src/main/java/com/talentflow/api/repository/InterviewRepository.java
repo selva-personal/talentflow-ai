@@ -11,4 +11,6 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
 
     @Query("SELECT AVG(i.overallScore) FROM Interview i WHERE i.user.id = :userId AND i.overallScore IS NOT NULL")
     Double averageScoreByUserId(Long userId);
+
+    long countByUserId(Long userId);
 }

@@ -2,7 +2,9 @@ package com.talentflow.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.talentflow.api.ai.GeminiService;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.dto.request.CareerRoadmapRequest;
 import com.talentflow.api.entity.CareerRoadmap;
 import com.talentflow.api.entity.User;
@@ -24,7 +26,8 @@ public class CareerRoadmapService {
 
     private final CareerRoadmapRepository roadmapRepository;
     private final UserRepository userRepository;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final ObjectMapper objectMapper;
     private final ActivityLogService activityLogService;
 
@@ -42,8 +45,9 @@ public class CareerRoadmapService {
                 """;
         String prompt = String.format("From %s to %s in %d months",
                 req.getCurrentRole(), req.getTargetRole(), req.getTimelineMonths());
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.generateRoadmap(req));
+        JsonNode json = aiResult.getData();
         Map<String, Object> roadmapData = objectMapper.convertValue(json, Map.class);
 
         User user = userRepository.getReferenceById(userId);
@@ -63,6 +67,7 @@ public class CareerRoadmapService {
         result.put("targetRole", roadmap.getTargetRole());
         result.put("timelineMonths", roadmap.getTimelineMonths());
         result.put("roadmapData", roadmap.getRoadmapData());
+        aiService.attachAiMeta(result, aiResult);
         return result;
     }
 

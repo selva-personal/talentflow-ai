@@ -13,15 +13,16 @@ const variants: Record<Variant, string> = {
     'bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/30',
   secondary:
     'bg-secondary/20 text-secondary border border-secondary/40 hover:bg-secondary/30',
-  ghost: 'bg-transparent text-text hover:bg-white/5',
+  ghost: 'bg-transparent text-text hover:bg-border/50',
   outline:
-    'border border-white/20 bg-transparent hover:border-primary/50 hover:bg-primary/10',
+    'border border-border bg-transparent hover:border-primary/50 hover:bg-primary/10',
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', loading, children, disabled, ...props }, ref) => (
+  ({ className, variant = 'primary', loading, children, disabled, type = 'button', ...props }, ref) => (
     <button
       ref={ref}
+      type={type}
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-50',

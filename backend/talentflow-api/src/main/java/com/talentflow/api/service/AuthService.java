@@ -15,6 +15,7 @@ import com.talentflow.api.repository.UserRepository;
 import com.talentflow.api.security.JwtService;
 import com.talentflow.api.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -39,6 +42,10 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final TalentflowProperties properties;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
+
+    @Value("${spring.profiles.active:}")
+    private String activeProfiles;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -58,7 +65,9 @@ public class AuthService {
                 .build();
         user = userRepository.save(user);
         activityLogService.log(user.getId(), "USER_REGISTERED", "USER", user.getId(), null);
-        return buildAuthResponse(user);
+        notificationService.notify(user.getId(), "Welcome to TalentFlow AI",
+                "Your account is ready. Upload a resume to get started.", "SUCCESS");
+        return buildAuthResponse(user, false);
     }
 
     @Transactional
@@ -70,7 +79,7 @@ public class AuthService {
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
         activityLogService.log(user.getId(), "USER_LOGIN", "USER", user.getId(), null);
-        return buildAuthResponse(user);
+        return buildAuthResponse(user, Boolean.TRUE.equals(request.getRememberMe()));
     }
 
     @Transactional
@@ -82,22 +91,31 @@ public class AuthService {
             throw new BadRequestException("Refresh token expired");
         }
         User user = token.getUser();
-        return buildAuthResponse(user);
+        token.setRevoked(true);
+        refreshTokenRepository.save(token);
+        return buildAuthResponse(user, false);
     }
 
     @Transactional
     public void logout(Long userId) {
         refreshTokenRepository.revokeAllByUserId(userId);
+        activityLogService.log(userId, "USER_LOGOUT", "USER", userId, null);
     }
 
     @Transactional
-    public void forgotPassword(ForgotPasswordRequest request) {
+    public Map<String, String> forgotPassword(ForgotPasswordRequest request) {
+        Map<String, String> result = new LinkedHashMap<>();
         userRepository.findByEmail(request.getEmail().toLowerCase()).ifPresent(user -> {
             String token = UUID.randomUUID().toString();
             user.setResetToken(token);
             user.setResetTokenExp(Instant.now().plusSeconds(3600));
             userRepository.save(user);
+            if (activeProfiles.contains("dev")) {
+                result.put("resetToken", token);
+                result.put("resetUrl", "/reset-password?token=" + token);
+            }
         });
+        return result;
     }
 
     @Transactional
@@ -114,14 +132,17 @@ public class AuthService {
         refreshTokenRepository.revokeAllByUserId(user.getId());
     }
 
-    private AuthResponse buildAuthResponse(User user) {
+    private AuthResponse buildAuthResponse(User user, boolean rememberMe) {
         UserPrincipal principal = new UserPrincipal(user);
         String accessToken = jwtService.generateAccessToken(principal);
         String refreshValue = jwtService.generateRefreshTokenValue();
+        long refreshMs = rememberMe
+                ? properties.getJwt().getRefreshExpirationMs() * 4
+                : properties.getJwt().getRefreshExpirationMs();
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .tokenHash(hashToken(refreshValue))
-                .expiresAt(Instant.now().plusMillis(properties.getJwt().getRefreshExpirationMs()))
+                .expiresAt(Instant.now().plusMillis(refreshMs))
                 .revoked(false)
                 .build();
         refreshTokenRepository.save(refreshToken);

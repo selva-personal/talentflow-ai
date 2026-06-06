@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { apiPost } from '@/lib/api'
+import { apiPost, getApiError } from '@/lib/api'
+import { toast } from '@/lib/toast'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { FormField } from '@/components/ui/form-field'
 import { Send } from 'lucide-react'
 
 interface Message {
@@ -16,6 +18,7 @@ export function MockInterviewPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [title, setTitle] = useState('Senior Engineer Mock')
+  const [roleTarget, setRoleTarget] = useState('Software Engineer')
   const [progress, setProgress] = useState(0)
   const [typing, setTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -25,15 +28,18 @@ export function MockInterviewPage() {
   }, [messages, typing])
 
   const createSession = useMutation({
-    mutationFn: () => apiPost<{ id: number; messages: Message[]; progressPercent: number }>('/mock-interviews', {
-      title,
-      roleTarget: 'Software Engineer',
-    }),
+    mutationFn: () =>
+      apiPost<{ id: number; messages: Message[]; progressPercent: number }>('/mock-interviews', {
+        title,
+        roleTarget,
+      }),
     onSuccess: (data) => {
       setSessionId(data.id)
       setMessages(data.messages)
       setProgress(data.progressPercent)
+      toast.success('Mock interview started')
     },
+    onError: (err) => toast.error('Failed to start session', getApiError(err)),
   })
 
   const send = useMutation({
@@ -48,7 +54,10 @@ export function MockInterviewPage() {
       setProgress(data.progressPercent)
       setTyping(false)
     },
-    onError: () => setTyping(false),
+    onError: (err) => {
+      setTyping(false)
+      toast.error('Message failed', getApiError(err))
+    },
   })
 
   const handleSend = () => {
@@ -63,9 +72,21 @@ export function MockInterviewPage() {
     <div className="flex h-[calc(100vh-8rem)] flex-col">
       <h1 className="text-3xl font-bold">Mock Interview</h1>
       {!sessionId ? (
-        <Card className="mt-6 max-w-md">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Session title" />
-          <Button className="mt-4" onClick={() => createSession.mutate()} loading={createSession.isPending}>
+        <Card className="mt-6 max-w-lg">
+          <div className="space-y-4">
+            <FormField label="Session title" htmlFor="sessionTitle" required>
+              <Input id="sessionTitle" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </FormField>
+            <FormField label="Target role" htmlFor="roleTarget" required>
+              <Input id="roleTarget" value={roleTarget} onChange={(e) => setRoleTarget(e.target.value)} />
+            </FormField>
+          </div>
+          <Button
+            type="button"
+            className="mt-4"
+            onClick={() => createSession.mutate()}
+            loading={createSession.isPending}
+          >
             Start Session
           </Button>
         </Card>
@@ -87,7 +108,7 @@ export function MockInterviewPage() {
                 </div>
               ))}
               {typing && (
-                <div className="flex gap-1 rounded-2xl bg-surface px-4 py-3 w-16">
+                <div className="flex w-16 gap-1 rounded-2xl bg-surface px-4 py-3">
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted" />
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted [animation-delay:0.1s]" />
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted [animation-delay:0.2s]" />
@@ -95,14 +116,17 @@ export function MockInterviewPage() {
               )}
               <div ref={bottomRef} />
             </div>
-            <div className="flex gap-2 border-t border-white/5 p-4">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Type your answer..."
-              />
-              <Button onClick={handleSend} disabled={send.isPending}>
+            <div className="flex gap-2 border-t border-border p-4">
+              <FormField label="Your message" htmlFor="chatInput" className="flex-1">
+                <Input
+                  id="chatInput"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                  placeholder="Type your answer..."
+                />
+              </FormField>
+              <Button type="button" onClick={handleSend} disabled={send.isPending} className="self-end">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ResumeRepository extends JpaRepository<Resume, Long> {
     Page<Resume> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    long countByUserId(Long userId);
 }

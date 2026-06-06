@@ -1,10 +1,13 @@
 package com.talentflow.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.talentflow.api.ai.GeminiService;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.dto.request.GenerateInterviewRequest;
 import com.talentflow.api.dto.request.SubmitAnswerRequest;
 import com.talentflow.api.entity.*;
+import com.talentflow.api.exception.BadRequestException;
 import com.talentflow.api.exception.ResourceNotFoundException;
 import com.talentflow.api.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +26,10 @@ public class InterviewService {
     private final InterviewQuestionRepository questionRepository;
     private final InterviewAnswerRepository answerRepository;
     private final UserRepository userRepository;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
 
     @Transactional
     public Map<String, Object> generate(Long userId, GenerateInterviewRequest req) {
@@ -40,8 +45,9 @@ public class InterviewService {
                 """;
         String prompt = String.format("Role: %s, Experience: %s, Skill: %s, Type: %s",
                 req.getRoleTarget(), req.getExperienceLevel(), req.getSkillLevel(), req.getInterviewType());
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.generateInterviewQuestions(req));
+        JsonNode json = aiResult.getData();
 
         User user = userRepository.getReferenceById(userId);
         Interview interview = Interview.builder()
@@ -70,12 +76,18 @@ public class InterviewService {
                     "type", question.getQuestionType(),
                     "text", question.getQuestionText()));
         }
+        if (questionDtos.isEmpty()) {
+            throw new BadRequestException("AI did not return any questions. Please try again.");
+        }
         activityLogService.log(userId, "INTERVIEW_GENERATED", "INTERVIEW", interview.getId(), null);
+        notificationService.notify(userId, "Interview questions generated",
+                interview.getTitle() + " is ready with " + questionDtos.size() + " questions.", "SUCCESS");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("interviewId", interview.getId());
         result.put("title", interview.getTitle());
         result.put("questions", questionDtos);
+        aiService.attachAiMeta(result, aiResult);
         return result;
     }
 
@@ -94,8 +106,9 @@ public class InterviewService {
                 """;
         String prompt = "Question (" + question.getQuestionType() + "): " + question.getQuestionText()
                 + "\n\nAnswer: " + req.getAnswerText();
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.scoreAnswer(question.getQuestionType(), question.getQuestionText(), req.getAnswerText()));
+        JsonNode json = aiResult.getData();
 
         User user = userRepository.getReferenceById(userId);
         InterviewAnswer answer = InterviewAnswer.builder()
@@ -107,10 +120,12 @@ public class InterviewService {
                 .build();
         answer = answerRepository.save(answer);
 
-        return Map.of(
-                "answerId", answer.getId(),
-                "score", answer.getScore(),
-                "feedback", answer.getFeedback());
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("answerId", answer.getId());
+        response.put("score", answer.getScore());
+        response.put("feedback", answer.getFeedback());
+        aiService.attachAiMeta(response, aiResult);
+        return response;
     }
 
     @Transactional
@@ -129,20 +144,27 @@ public class InterviewService {
                 {"feedback": "summary", "improvements": ["item1","item2"]}
                 """;
         String prompt = "Role: " + interview.getRoleTarget() + ", Average score: " + avg;
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.completeInterview(interview, avg));
+        JsonNode json = aiResult.getData();
 
         interview.setOverallScore(avg);
         interview.setFeedback(json.path("feedback").asText());
         interview.setImprovements(jsonArrayToList(json.path("improvements")));
         interview.setStatus("COMPLETED");
         interviewRepository.save(interview);
+        activityLogService.log(userId, "INTERVIEW_COMPLETED", "INTERVIEW", interview.getId(),
+                Map.of("overallScore", interview.getOverallScore()));
+        notificationService.notify(userId, "Interview completed",
+                "Your overall score: " + interview.getOverallScore() + "/100", "SUCCESS");
 
-        return Map.of(
-                "interviewId", interview.getId(),
-                "overallScore", interview.getOverallScore(),
-                "feedback", interview.getFeedback(),
-                "improvements", interview.getImprovements());
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("interviewId", interview.getId());
+        response.put("overallScore", interview.getOverallScore());
+        response.put("feedback", interview.getFeedback());
+        response.put("improvements", interview.getImprovements());
+        aiService.attachAiMeta(response, aiResult);
+        return response;
     }
 
     @Transactional(readOnly = true)

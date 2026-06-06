@@ -26,7 +26,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       setTokens: (access, refresh, user) =>
         set({ accessToken: access, refreshToken: refresh, user }),
-      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
+      logout: () => {
+        set({ accessToken: null, refreshToken: null, user: null })
+      },
       isAuthenticated: () => !!get().accessToken,
     }),
     { name: 'talentflow-auth' }

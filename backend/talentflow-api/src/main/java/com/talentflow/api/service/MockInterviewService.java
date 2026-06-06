@@ -1,6 +1,9 @@
 package com.talentflow.api.service;
 
-import com.talentflow.api.ai.GeminiService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.dto.request.CreateMockSessionRequest;
 import com.talentflow.api.dto.request.MockInterviewMessageRequest;
 import com.talentflow.api.entity.MockInterviewSession;
@@ -22,16 +25,20 @@ public class MockInterviewService {
 
     private final MockInterviewSessionRepository sessionRepository;
     private final UserRepository userRepository;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final ActivityLogService activityLogService;
 
     @Transactional
     public Map<String, Object> createSession(Long userId, CreateMockSessionRequest req) {
         User user = userRepository.getReferenceById(userId);
         List<Map<String, Object>> messages = new ArrayList<>();
-        String opener = geminiService.generate(
+        String role = req.getRoleTarget() != null ? req.getRoleTarget() : "Software Engineer";
+        AiCallResult<String> aiResult = aiService.generateText(
                 "You are a professional AI interviewer. Start the mock interview with a brief greeting and first question.",
-                "Role: " + (req.getRoleTarget() != null ? req.getRoleTarget() : "Software Engineer"));
+                "Role: " + role,
+                () -> fallbackAiService.mockInterviewOpener(role));
+        String opener = aiResult.getData();
         messages.add(Map.of("role", "assistant", "content", opener, "timestamp", java.time.Instant.now().toString()));
 
         MockInterviewSession session = MockInterviewSession.builder()
@@ -44,7 +51,9 @@ public class MockInterviewService {
                 .build();
         session = sessionRepository.save(session);
         activityLogService.log(userId, "MOCK_SESSION_CREATED", "MOCK_INTERVIEW", session.getId(), null);
-        return sessionToMap(session);
+        Map<String, Object> result = sessionToMap(session);
+        aiService.attachAiMeta(result, aiResult);
+        return result;
     }
 
     @Transactional
@@ -57,9 +66,12 @@ public class MockInterviewService {
         for (Map<String, Object> m : messages) {
             history.append(m.get("role")).append(": ").append(m.get("content")).append("\n");
         }
-        String reply = geminiService.generate(
+        String role = session.getRoleTarget() != null ? session.getRoleTarget() : "Software Engineer";
+        AiCallResult<String> aiResult = aiService.generateText(
                 "You are an AI interviewer conducting a mock interview. Ask follow-up questions, evaluate briefly, stay professional.",
-                history.toString());
+                history.toString(),
+                () -> fallbackAiService.mockInterviewReply(role, history.toString()));
+        String reply = aiResult.getData();
         messages.add(Map.of("role", "assistant", "content", reply, "timestamp", java.time.Instant.now().toString()));
 
         int progress = Math.min(100, session.getProgressPercent() + 8);
@@ -67,11 +79,13 @@ public class MockInterviewService {
         session.setProgressPercent(progress);
         sessionRepository.save(session);
 
-        return Map.of(
-                "sessionId", session.getId(),
-                "reply", reply,
-                "progressPercent", progress,
-                "messages", messages);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sessionId", session.getId());
+        result.put("reply", reply);
+        result.put("progressPercent", progress);
+        result.put("messages", messages);
+        aiService.attachAiMeta(result, aiResult);
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -105,5 +119,4 @@ public class MockInterviewService {
         m.put("updatedAt", s.getUpdatedAt().toString());
         return m;
     }
-
 }

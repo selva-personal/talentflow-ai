@@ -43,6 +43,9 @@ talentflow:
   gemini:
     api-key: ${GEMINI_API_KEY:}
     model: gemini-2.0-flash
+  ai:
+    mode: ${APP_AI_MODE:gemini}
+    provider: ${AI_PROVIDER:gemini}
   upload:
     directory: ${FILE_UPLOAD_DIR:./uploads}
   rate-limit:

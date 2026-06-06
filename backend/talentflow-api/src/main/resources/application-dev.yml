@@ -1,0 +1,16 @@
+# Active with: SPRING_PROFILES_ACTIVE=dev
+# Uses embedded PostgreSQL on port 5433 (see EmbeddedPostgresConfig)
+# Loads backend/talentflow-api/.env when present (GEMINI_API_KEY, JWT_SECRET, etc.)
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  jpa:
+    show-sql: false
+
+talentflow:
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:5174
+
+logging:
+  level:
+    com.talentflow: DEBUG

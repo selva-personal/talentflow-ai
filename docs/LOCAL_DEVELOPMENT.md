@@ -4,7 +4,7 @@
 
 - Java 21
 - Node.js 20+
-- Docker (for local PostgreSQL) **or** Supabase/Render DB with network access
+- Docker (optional) **or** embedded PostgreSQL via `dev` profile (no Docker required)
 - Gemini API key ([Google AI Studio](https://aistudio.google.com/apikey))
 
 ## 1. Database
@@ -42,16 +42,25 @@ export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/talentflow
 export SPRING_DATASOURCE_USERNAME=talentflow
 export SPRING_DATASOURCE_PASSWORD=talentflow_secret
 export JWT_SECRET=local-dev-secret-minimum-32-characters-long
-export GEMINI_API_KEY=your-gemini-api-key
+export GEMINI_API_KEY=your-gemini-api-key-from-aistudio
 export CORS_ALLOWED_ORIGINS=http://localhost:5173
 export FILE_UPLOAD_DIR=./uploads
 ```
 
-Run:
+Run (from `backend/talentflow-api`):
 
 ```bash
+# Easiest — embedded PostgreSQL on port 5433 (no Docker)
+../../scripts/run-backend.sh
+
+# Or manually:
+export SPRING_PROFILES_ACTIVE=dev
+set -a && source .env && set +a
 ./mvnw spring-boot:run
 ```
+
+> **Note:** Run Maven from `backend/talentflow-api`, not `backend/`.  
+> Without Docker, use profile `dev`. With Docker (`docker compose up -d`), omit `dev` and use `.env` credentials on port 5432.
 
 Verify:
 

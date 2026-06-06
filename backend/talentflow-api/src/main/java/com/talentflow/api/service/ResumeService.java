@@ -1,7 +1,9 @@
 package com.talentflow.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.talentflow.api.ai.GeminiService;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.config.TalentflowProperties;
 import com.talentflow.api.entity.Resume;
 import com.talentflow.api.entity.ResumeAnalysis;
@@ -32,9 +34,11 @@ public class ResumeService {
     private final ResumeAnalysisRepository analysisRepository;
     private final UserRepository userRepository;
     private final PdfTextExtractor pdfTextExtractor;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final TalentflowProperties properties;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
 
     @Transactional
     public Map<String, Object> uploadAndAnalyze(Long userId, MultipartFile file) throws Exception {
@@ -60,13 +64,17 @@ public class ResumeService {
                 .build();
         resume = resumeRepository.save(resume);
 
-        ResumeAnalysis analysis = analyzeResume(userId, resume, text);
+        AnalysisOutcome outcome = analyzeResume(userId, resume, text);
+        ResumeAnalysis analysis = outcome.analysis();
         activityLogService.log(userId, "RESUME_ANALYZED", "RESUME", resume.getId(), Map.of("atsScore", analysis.getAtsScore()));
+        notificationService.notify(userId, "Resume analyzed",
+                resume.getFileName() + " scored " + analysis.getAtsScore() + " on ATS.", "SUCCESS");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("resumeId", resume.getId());
         result.put("fileName", resume.getFileName());
         result.put("analysis", toAnalysisMap(analysis));
+        aiService.attachAiMeta(result, outcome.aiResult());
         return result;
     }
 
@@ -92,7 +100,7 @@ public class ResumeService {
         return toAnalysisMap(analysis);
     }
 
-    private ResumeAnalysis analyzeResume(Long userId, Resume resume, String text) {
+    private AnalysisOutcome analyzeResume(Long userId, Resume resume, String text) {
         String system = """
                 You are an expert ATS resume analyzer. Respond ONLY with valid JSON:
                 {
@@ -104,8 +112,9 @@ public class ResumeService {
                 }
                 """;
         String userPrompt = "Analyze this resume:\n\n" + text.substring(0, Math.min(text.length(), 12000));
-        String aiText = geminiService.generate(system, userPrompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, userPrompt,
+                () -> fallbackAiService.analyzeResume(text));
+        JsonNode json = aiResult.getData();
 
         User user = userRepository.getReferenceById(userId);
         ResumeAnalysis analysis = ResumeAnalysis.builder()
@@ -116,10 +125,12 @@ public class ResumeService {
                 .weaknesses(jsonArrayToList(json.path("weaknesses")))
                 .missingSkills(jsonArrayToList(json.path("missingSkills")))
                 .recommendations(jsonArrayToList(json.path("recommendations")))
-                .rawAiResponse(Map.of("raw", aiText))
+                .rawAiResponse(Map.of("provider", aiResult.getProvider(), "fallback", aiResult.isFallbackUsed()))
                 .build();
-        return analysisRepository.save(analysis);
+        return new AnalysisOutcome(analysisRepository.save(analysis), aiResult);
     }
+
+    private record AnalysisOutcome(ResumeAnalysis analysis, AiCallResult<JsonNode> aiResult) {}
 
     private List<String> jsonArrayToList(JsonNode node) {
         List<String> list = new ArrayList<>();

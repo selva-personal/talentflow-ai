@@ -1,7 +1,9 @@
 package com.talentflow.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.talentflow.api.ai.GeminiService;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.dto.request.CodingSubmitRequest;
 import com.talentflow.api.dto.request.CodingTestRequest;
 import com.talentflow.api.entity.CodingSubmission;
@@ -26,7 +28,8 @@ public class CodingService {
     private final CodingTestRepository testRepository;
     private final CodingSubmissionRepository submissionRepository;
     private final UserRepository userRepository;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final ActivityLogService activityLogService;
 
     @Transactional
@@ -37,8 +40,9 @@ public class CodingService {
                 """;
         String prompt = "Language: " + req.getLanguage() + ", Difficulty: " + req.getDifficulty()
                 + ", Topic: " + (req.getTopic() != null ? req.getTopic() : "algorithms");
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.generateCodingChallenge(req));
+        JsonNode json = aiResult.getData();
 
         User user = userRepository.getReferenceById(userId);
         CodingTest test = CodingTest.builder()
@@ -52,13 +56,15 @@ public class CodingService {
         test = testRepository.save(test);
         activityLogService.log(userId, "CODING_TEST_CREATED", "CODING_TEST", test.getId(), null);
 
-        return Map.of(
-                "testId", test.getId(),
-                "title", test.getTitle(),
-                "language", test.getLanguage(),
-                "problemStatement", test.getProblemStatement(),
-                "starterCode", test.getStarterCode(),
-                "difficulty", test.getDifficulty());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("testId", test.getId());
+        result.put("title", test.getTitle());
+        result.put("language", test.getLanguage());
+        result.put("problemStatement", test.getProblemStatement());
+        result.put("starterCode", test.getStarterCode());
+        result.put("difficulty", test.getDifficulty());
+        aiService.attachAiMeta(result, aiResult);
+        return result;
     }
 
     @Transactional
@@ -76,8 +82,9 @@ public class CodingService {
                 """;
         String prompt = "Language: " + test.getLanguage() + "\nProblem:\n" + test.getProblemStatement()
                 + "\n\nCode:\n" + req.getCode();
-        String aiText = geminiService.generate(system, prompt);
-        JsonNode json = geminiService.parseJsonResponse(aiText);
+        AiCallResult<JsonNode> aiResult = aiService.generateJson(system, prompt,
+                () -> fallbackAiService.reviewCodeSubmission(test.getLanguage(), test.getProblemStatement(), req.getCode()));
+        JsonNode json = aiResult.getData();
 
         User user = userRepository.getReferenceById(userId);
         List<String> suggestions = new ArrayList<>();
@@ -97,13 +104,15 @@ public class CodingService {
                 .build();
         submission = submissionRepository.save(submission);
 
-        return Map.of(
-                "submissionId", submission.getId(),
-                "passed", submission.getPassed(),
-                "output", submission.getOutput(),
-                "aiScore", submission.getAiScore(),
-                "complexityAnalysis", submission.getComplexityAnalysis(),
-                "suggestions", submission.getSuggestions());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("submissionId", submission.getId());
+        result.put("passed", submission.getPassed());
+        result.put("output", submission.getOutput());
+        result.put("aiScore", submission.getAiScore());
+        result.put("complexityAnalysis", submission.getComplexityAnalysis());
+        result.put("suggestions", submission.getSuggestions());
+        aiService.attachAiMeta(result, aiResult);
+        return result;
     }
 
     @Transactional(readOnly = true)

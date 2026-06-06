@@ -157,8 +157,8 @@ CREATE INDEX idx_coding_submissions_user ON coding_submissions(user_id);
 CREATE TABLE career_roadmaps (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    current_role    VARCHAR(150) NOT NULL,
-    target_role     VARCHAR(150) NOT NULL,
+    "current_role"  VARCHAR(150) NOT NULL,
+    "target_role"   VARCHAR(150) NOT NULL,
     timeline_months INTEGER NOT NULL,
     roadmap_data    JSONB NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),

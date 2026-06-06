@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export function Footer() {
   return (
-    <footer className="border-t border-white/5 bg-surface/50 py-12">
+    <footer className="border-t border-border bg-surface/50 py-12">
       <div className="mx-auto grid max-w-7xl gap-8 px-6 md:grid-cols-4">
         <div>
           <p className="text-lg font-bold gradient-text">TalentFlow AI</p>

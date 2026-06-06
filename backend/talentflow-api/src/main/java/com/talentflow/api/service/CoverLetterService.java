@@ -1,6 +1,8 @@
 package com.talentflow.api.service;
 
-import com.talentflow.api.ai.GeminiService;
+import com.talentflow.api.ai.AiCallResult;
+import com.talentflow.api.ai.AiService;
+import com.talentflow.api.ai.FallbackAiService;
 import com.talentflow.api.dto.request.CoverLetterRequest;
 import com.talentflow.api.entity.CoverLetter;
 import com.talentflow.api.entity.User;
@@ -22,7 +24,8 @@ public class CoverLetterService {
 
     private final CoverLetterRepository coverLetterRepository;
     private final UserRepository userRepository;
-    private final GeminiService geminiService;
+    private final AiService aiService;
+    private final FallbackAiService fallbackAiService;
     private final ActivityLogService activityLogService;
 
     @Transactional
@@ -31,14 +34,16 @@ public class CoverLetterService {
         String prompt = String.format("Job: %s at %s. Tone: %s. Highlights: %s",
                 req.getJobTitle(), req.getCompanyName(), req.getTone(),
                 req.getHighlights() != null ? req.getHighlights() : "experienced professional");
-        String content = geminiService.generate(system, prompt);
+        AiCallResult<String> aiResult = aiService.generateText(system, prompt,
+                () -> fallbackAiService.generateCoverLetter(req));
+        String content = aiResult.getData().trim();
 
         User user = userRepository.getReferenceById(userId);
         CoverLetter letter = CoverLetter.builder()
                 .user(user)
                 .jobTitle(req.getJobTitle())
                 .companyName(req.getCompanyName())
-                .content(content.trim())
+                .content(content)
                 .tone(req.getTone())
                 .build();
         letter = coverLetterRepository.save(letter);
@@ -50,6 +55,7 @@ public class CoverLetterService {
         result.put("companyName", letter.getCompanyName());
         result.put("content", letter.getContent());
         result.put("tone", letter.getTone());
+        aiService.attachAiMeta(result, aiResult);
         return result;
     }
 

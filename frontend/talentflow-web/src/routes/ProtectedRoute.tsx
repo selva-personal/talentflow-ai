@@ -2,8 +2,11 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 
 export function ProtectedRoute() {
-  if (!useAuthStore.getState().isAuthenticated()) {
+  const accessToken = useAuthStore((s) => s.accessToken)
+
+  if (!accessToken) {
     return <Navigate to="/login" replace />
   }
+
   return <Outlet />
 }
