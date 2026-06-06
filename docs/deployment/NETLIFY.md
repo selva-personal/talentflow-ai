@@ -10,9 +10,9 @@ TalentFlow AI frontend is a **Vite + React** SPA deployed on **Netlify**. The AP
 
 ## Repository layout
 
-Netlify can build from the monorepo with **base directory** `frontend/talentflow-web` (recommended), or use root `netlify.toml` if you set base in the UI.
+This monorepo includes **`netlify.toml` at the repository root** (required). Netlify only reads a nested `frontend/talentflow-web/netlify.toml` when the UI **Base directory** is already set to that folder — if the site is connected at repo root without a root config, builds and publish paths are wrong and `/` returns Netlify’s 404 page.
 
-This repo includes `frontend/talentflow-web/netlify.toml`:
+Root `netlify.toml` settings:
 
 | Setting | Value |
 |---------|-------|
@@ -26,9 +26,11 @@ This repo includes `frontend/talentflow-web/netlify.toml`:
 
 1. [Netlify](https://app.netlify.com) → **Add new site** → **Import an existing project**
 2. Connect Git provider and select the TalentFlow AI repository
-3. **Base directory:** `frontend/talentflow-web`
-4. **Build command:** `npm run build` (from `netlify.toml` if detected)
-5. **Publish directory:** `dist`
+3. **Production branch:** `develop` ( **`main` only contains README/LICENSE** — deploying `main` will 404)
+4. Leave **Base directory**, **Build command**, and **Publish directory** empty in the UI so root `netlify.toml` applies, **or** set:
+   - **Base directory:** `frontend/talentflow-web`
+   - **Build command:** `npm run build`
+   - **Publish directory:** `dist` (relative to base — **not** repo root)
 
 ### 2. Environment variables
 
@@ -92,6 +94,7 @@ Note: Spring CORS does **not** support wildcards in origins when `allowCredentia
 
 | Error | Solution |
 |-------|----------|
+| **404 on `/` (Netlify “Page not found”)** | Deploy branch must be **`develop`**. Publish must be **`dist`** (via root `netlify.toml` or UI base `frontend/talentflow-web`). Do not publish repo root — there is no `index.html` there. |
 | `VITE_API_BASE_URL is not set` | Add env var in Netlify UI and redeploy |
 | 404 on `/login` refresh | Confirm `_redirects` / `netlify.toml` redirects |
 | API network errors | Check CORS on Render and HTTPS API URL |
