@@ -1,5 +1,6 @@
 package com.talentflow.api.ai;
 
+import com.talentflow.api.ai.provider.AiProviderType;
 import lombok.Getter;
 
 import java.util.LinkedHashMap;
@@ -18,12 +19,17 @@ public class AiCallResult<T> {
         this.provider = provider;
     }
 
+    public static <T> AiCallResult<T> of(T data, String provider) {
+        boolean fallback = AiProviderType.FALLBACK.id().equals(provider);
+        return new AiCallResult<>(data, fallback, provider);
+    }
+
     public static <T> AiCallResult<T> gemini(T data) {
-        return new AiCallResult<>(data, false, "gemini");
+        return of(data, AiProviderType.GEMINI.id());
     }
 
     public static <T> AiCallResult<T> fallback(T data) {
-        return new AiCallResult<>(data, true, "fallback");
+        return new AiCallResult<>(data, true, AiProviderType.FALLBACK.id());
     }
 
     public Map<String, Object> toMeta() {

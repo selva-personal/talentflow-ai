@@ -31,13 +31,36 @@ public class GeminiService {
 
     /** Low-level Gemini call — throws retryable exceptions on quota/unavailability. */
     public String callGemini(String systemPrompt, String userPrompt) {
-        String apiKey = properties.getGemini().getApiKey();
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new AiUnavailableException("Gemini API key is not configured");
+        GeminiProbeResult probe = probeLive(systemPrompt, userPrompt);
+        if (probe.isSuccess()) {
+            return probe.getResponseText();
         }
-        String model = properties.getGemini().getModel();
-        String url = String.format(GEMINI_URL, model, apiKey);
+        if (!probe.isQuotaAvailable()) {
+            throw new AiQuotaExceededException(probe.getFailureReason());
+        }
+        throw new AiUnavailableException(probe.getFailureReason());
+    }
 
+    /**
+     * Live diagnostic probe — captures HTTP status, bodies, timing, and classification.
+     */
+    public GeminiProbeResult probeLive(String systemPrompt, String userPrompt) {
+        String apiKey = properties.getGemini().getApiKey();
+        String model = properties.getGemini().getModel();
+
+        if (apiKey == null || apiKey.isBlank()) {
+            return GeminiProbeResult.builder()
+                    .success(false)
+                    .httpStatus(0)
+                    .model(model)
+                    .geminiReachable(false)
+                    .quotaAvailable(false)
+                    .diagnosis("API_KEY_MISSING")
+                    .failureReason("Gemini API key is not configured")
+                    .build();
+        }
+
+        String url = String.format(GEMINI_URL, model, apiKey.trim());
         Map<String, Object> body = Map.of(
                 "contents", List.of(Map.of(
                         "role", "user",
@@ -47,7 +70,7 @@ public class GeminiService {
                 )),
                 "generationConfig", Map.of(
                         "temperature", 0.7,
-                        "maxOutputTokens", 8192
+                        "maxOutputTokens", 256
                 )
         );
 
@@ -55,42 +78,152 @@ public class GeminiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        log.debug("Gemini request model={} promptLength={}", model, userPrompt.length());
+        long start = System.currentTimeMillis();
+        log.info("Gemini probe model={} key={}", model, ApiKeyUtils.mask(apiKey));
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            JsonNode root = objectMapper.readTree(response.getBody());
+            long elapsed = System.currentTimeMillis() - start;
+            String responseBody = response.getBody();
+
+            JsonNode root = objectMapper.readTree(responseBody);
             JsonNode error = root.path("error");
             if (!error.isMissingNode()) {
-                handleGeminiErrorBody(error.path("message").asText(""), error.path("code").asInt(0));
+                return buildErrorResult(model, response.getStatusCode().value(), null, responseBody,
+                        error.path("code").asInt(0), error.path("message").asText(""), elapsed, true);
             }
+
             JsonNode candidates = root.path("candidates");
             if (candidates.isEmpty()) {
-                throw new AiUnavailableException("AI returned no response");
+                return GeminiProbeResult.builder()
+                        .success(false)
+                        .httpStatus(response.getStatusCode().value())
+                        .responseBody(truncate(responseBody))
+                        .model(model)
+                        .responseTimeMs(elapsed)
+                        .geminiReachable(true)
+                        .quotaAvailable(false)
+                        .diagnosis("EMPTY_RESPONSE")
+                        .failureReason("AI returned no candidates")
+                        .build();
             }
+
             String text = candidates.get(0).path("content").path("parts").get(0).path("text").asText();
-            log.debug("Gemini response length={}", text.length());
-            return text;
-        } catch (AiQuotaExceededException | AiUnavailableException e) {
-            throw e;
+            log.info("Gemini probe succeeded in {}ms responseLength={}", elapsed, text.length());
+
+            return GeminiProbeResult.builder()
+                    .success(true)
+                    .httpStatus(response.getStatusCode().value())
+                    .responseBody(truncate(responseBody))
+                    .model(model)
+                    .responseText(text)
+                    .responseTimeMs(elapsed)
+                    .geminiReachable(true)
+                    .quotaAvailable(true)
+                    .diagnosis("OK")
+                    .build();
         } catch (HttpStatusCodeException e) {
-            String bodyText = e.getResponseBodyAsString();
-            log.error("Gemini HTTP {} — quota/retry evaluation (body length={})", e.getStatusCode().value(), bodyText.length());
-            mapHttpError(e.getStatusCode().value(), bodyText);
-            throw new AiUnavailableException("Gemini API error");
+            long elapsed = System.currentTimeMillis() - start;
+            String errorBody = e.getResponseBodyAsString();
+            log.error("Gemini probe HTTP {} in {}ms key={} body={}",
+                    e.getStatusCode().value(), elapsed, ApiKeyUtils.mask(apiKey), truncate(errorBody));
+
+            Integer googleCode = null;
+            String googleMessage = null;
+            try {
+                JsonNode root = objectMapper.readTree(errorBody);
+                googleCode = root.path("error").path("code").asInt(0);
+                googleMessage = root.path("error").path("message").asText(null);
+            } catch (Exception ignored) {
+                googleMessage = errorBody;
+            }
+
+            return buildErrorResult(model, e.getStatusCode().value(), null, errorBody,
+                    googleCode != null && googleCode != 0 ? googleCode : e.getStatusCode().value(),
+                    googleMessage != null ? googleMessage : e.getMessage(), elapsed, true);
         } catch (RestClientException e) {
-            log.error("Gemini network error", e);
-            throw new AiUnavailableException("Gemini network error", e);
+            long elapsed = System.currentTimeMillis() - start;
+            log.error("Gemini probe network error in {}ms: {}", elapsed, e.getMessage());
+            return GeminiProbeResult.builder()
+                    .success(false)
+                    .httpStatus(0)
+                    .errorBody(e.getMessage())
+                    .model(model)
+                    .responseTimeMs(elapsed)
+                    .geminiReachable(false)
+                    .quotaAvailable(false)
+                    .diagnosis("NETWORK_ERROR")
+                    .failureReason("Gemini network error: " + e.getMessage())
+                    .build();
         } catch (Exception e) {
-            log.error("Gemini unexpected error", e);
-            throw new AiUnavailableException("Gemini unexpected error", e);
+            long elapsed = System.currentTimeMillis() - start;
+            log.error("Gemini probe unexpected error", e);
+            return GeminiProbeResult.builder()
+                    .success(false)
+                    .httpStatus(0)
+                    .errorBody(e.getMessage())
+                    .model(model)
+                    .responseTimeMs(elapsed)
+                    .geminiReachable(false)
+                    .quotaAvailable(false)
+                    .diagnosis("UNEXPECTED_ERROR")
+                    .failureReason("Gemini unexpected error: " + e.getMessage())
+                    .build();
         }
     }
 
-    /** @deprecated Use AiService instead */
-    @Deprecated
-    public String generate(String systemPrompt, String userPrompt) {
-        return callGemini(systemPrompt, userPrompt);
+    private GeminiProbeResult buildErrorResult(String model, int httpStatus, String responseBody,
+                                               String errorBody, int googleCode, String googleMessage,
+                                               long elapsed, boolean reachable) {
+        return buildErrorResult(model, httpStatus, responseBody, errorBody, Integer.valueOf(googleCode),
+                googleMessage, elapsed, reachable);
+    }
+
+    private GeminiProbeResult buildErrorResult(String model, int httpStatus, String responseBody,
+                                               String errorBody, Integer googleCode, String googleMessage,
+                                               long elapsed, boolean reachable) {
+        String diagnosis = classifyDiagnosis(httpStatus, googleCode, googleMessage);
+        boolean quotaAvailable = !"QUOTA_EXHAUSTED".equals(diagnosis);
+
+        return GeminiProbeResult.builder()
+                .success(false)
+                .httpStatus(httpStatus)
+                .responseBody(truncate(responseBody))
+                .errorBody(truncate(errorBody))
+                .model(model)
+                .responseTimeMs(elapsed)
+                .geminiReachable(reachable)
+                .quotaAvailable(quotaAvailable)
+                .diagnosis(diagnosis)
+                .googleErrorCode(googleCode)
+                .googleErrorMessage(googleMessage)
+                .failureReason(googleMessage != null ? googleMessage : "Gemini API error HTTP " + httpStatus)
+                .build();
+    }
+
+    static String classifyDiagnosis(int httpStatus, Integer googleCode, String message) {
+        String lower = message != null ? message.toLowerCase() : "";
+        int code = googleCode != null ? googleCode : httpStatus;
+
+        if (httpStatus == 429 || code == 429 || lower.contains("quota") || lower.contains("resource_exhausted")) {
+            return "QUOTA_EXHAUSTED";
+        }
+        if (httpStatus == 401 || code == 401 || lower.contains("api key not valid")) {
+            return "INVALID_API_KEY";
+        }
+        if (httpStatus == 403 || code == 403 || lower.contains("permission")) {
+            return "PERMISSION_DENIED";
+        }
+        if (httpStatus == 400 || code == 400) {
+            return "BAD_REQUEST";
+        }
+        if (httpStatus == 404 || code == 404) {
+            return "MODEL_NOT_FOUND";
+        }
+        if (httpStatus == 0) {
+            return "NETWORK_ERROR";
+        }
+        return "API_ERROR";
     }
 
     public JsonNode parseJsonResponse(String text) {
@@ -111,26 +244,10 @@ public class GeminiService {
         }
     }
 
-    private void mapHttpError(int status, String body) {
-        String lower = body != null ? body.toLowerCase() : "";
-        if (status == 429 || lower.contains("resource_exhausted") || lower.contains("quota exceeded")
-                || lower.contains("quota_exceeded")) {
-            throw new AiQuotaExceededException("Gemini quota exceeded");
+    private static String truncate(String text) {
+        if (text == null) {
+            return null;
         }
-        if (status == 503 || status == 504 || status == 502) {
-            throw new AiUnavailableException("Gemini temporarily unavailable");
-        }
-        if (status == 401 || status == 403 || status == 400) {
-            throw new AiUnavailableException("Gemini authentication or request error");
-        }
-        throw new AiUnavailableException("Gemini API error HTTP " + status);
-    }
-
-    private void handleGeminiErrorBody(String message, int code) {
-        String lower = message != null ? message.toLowerCase() : "";
-        if (code == 429 || lower.contains("resource_exhausted") || lower.contains("quota")) {
-            throw new AiQuotaExceededException("Gemini quota exceeded");
-        }
-        throw new AiUnavailableException(message != null ? message : "Gemini API error");
+        return text.length() > 2000 ? text.substring(0, 2000) + "…[truncated]" : text;
     }
 }

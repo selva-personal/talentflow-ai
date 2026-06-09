@@ -14,6 +14,9 @@ const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage
 const ResetPasswordPage = lazy(() => import('@/features/auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const AdminPage = lazy(() => import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminPage })))
+const AdminAiDiagnosticsPage = lazy(() =>
+  import('@/features/admin/AdminAiDiagnosticsPage').then((m) => ({ default: m.AdminAiDiagnosticsPage }))
+)
 const ResumePage = lazy(() => import('@/features/resume/ResumePage').then((m) => ({ default: m.ResumePage })))
 const InterviewPage = lazy(() => import('@/features/interview/InterviewPage').then((m) => ({ default: m.InterviewPage })))
 const MockInterviewPage = lazy(() => import('@/features/mock/MockInterviewPage').then((m) => ({ default: m.MockInterviewPage })))
@@ -63,6 +66,7 @@ export default function App() {
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route element={<AdminRoute />}>
                   <Route path="admin" element={<AdminPage />} />
+                  <Route path="admin/ai-diagnostics" element={<AdminAiDiagnosticsPage />} />
                 </Route>
               </Route>
             </Route>

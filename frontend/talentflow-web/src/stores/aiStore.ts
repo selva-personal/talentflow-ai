@@ -11,6 +11,21 @@ export interface AiStatus {
   quotaStatus: string
   fallbackActive: boolean
   activeProvider: string
+  lastSuccessfulRequest?: string | null
+  lastFailureReason?: string | null
+}
+
+export interface AdminAiStatus extends AiStatus {
+  fallbackMode: string
+  configuredMode: string
+  configuredProvider: string
+  apiKeyConfigured: boolean
+  geminiModel: string
+  totalRetryAttempts: number
+  quotaFailureCount: number
+  fallbackUsageCount: number
+  lastRequestAt?: string | null
+  lastFailureAt?: string | null
 }
 
 interface AiState {
@@ -18,6 +33,8 @@ interface AiState {
   provider: string
   geminiStatus: string
   quotaStatus: string
+  lastSuccessfulRequest: string | null
+  lastFailureReason: string | null
   setFromMeta: (meta: AiMeta) => void
   setStatus: (status: AiStatus) => void
   clear: () => void
@@ -28,6 +45,8 @@ export const useAiStore = create<AiState>((set) => ({
   provider: 'gemini',
   geminiStatus: 'UNKNOWN',
   quotaStatus: 'UNKNOWN',
+  lastSuccessfulRequest: null,
+  lastFailureReason: null,
   setFromMeta: (meta) =>
     set({
       fallbackActive: meta.fallbackActive,
@@ -39,6 +58,8 @@ export const useAiStore = create<AiState>((set) => ({
       provider: status.activeProvider,
       geminiStatus: status.geminiStatus,
       quotaStatus: status.quotaStatus,
+      lastSuccessfulRequest: status.lastSuccessfulRequest ?? null,
+      lastFailureReason: status.lastFailureReason ?? null,
     }),
   clear: () =>
     set({
@@ -46,5 +67,7 @@ export const useAiStore = create<AiState>((set) => ({
       provider: 'gemini',
       geminiStatus: 'UNKNOWN',
       quotaStatus: 'UNKNOWN',
+      lastSuccessfulRequest: null,
+      lastFailureReason: null,
     }),
 }))

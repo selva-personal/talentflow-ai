@@ -97,6 +97,9 @@ export function MockInterviewPage() {
           </div>
           <Card className="flex flex-1 flex-col overflow-hidden p-0">
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {messages.length === 0 && !typing && (
+                <p className="text-sm text-muted">Waiting for the interviewer to begin…</p>
+              )}
               {messages.map((m, i) => (
                 <div
                   key={i}

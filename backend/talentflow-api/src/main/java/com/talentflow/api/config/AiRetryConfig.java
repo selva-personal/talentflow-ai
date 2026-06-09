@@ -1,6 +1,5 @@
 package com.talentflow.api.config;
 
-import com.talentflow.api.exception.AiQuotaExceededException;
 import com.talentflow.api.exception.AiUnavailableException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,14 +13,17 @@ import java.util.Map;
 @Configuration
 public class AiRetryConfig {
 
+    /**
+     * Retries transient Gemini failures only. Quota errors fail fast (no retry)
+     * because HTTP 429 will not recover within seconds.
+     */
     @Bean
     public RetryTemplate geminiRetryTemplate() {
         RetryTemplate retryTemplate = new RetryTemplate();
 
         Map<Class<? extends Throwable>, Boolean> retryable = new HashMap<>();
-        retryable.put(AiQuotaExceededException.class, true);
         retryable.put(AiUnavailableException.class, true);
-        retryTemplate.setRetryPolicy(new SimpleRetryPolicy(4, retryable, true));
+        retryTemplate.setRetryPolicy(new SimpleRetryPolicy(3, retryable, true));
 
         ExponentialBackOffPolicy backOff = new ExponentialBackOffPolicy();
         backOff.setInitialInterval(2000L);

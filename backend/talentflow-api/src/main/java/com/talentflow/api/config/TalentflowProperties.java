@@ -14,6 +14,9 @@ public class TalentflowProperties {
     private Jwt jwt = new Jwt();
     private Cors cors = new Cors();
     private Gemini gemini = new Gemini();
+    private OpenAi openai = new OpenAi();
+    private Anthropic anthropic = new Anthropic();
+    private Ollama ollama = new Ollama();
     private Ai ai = new Ai();
     private Upload upload = new Upload();
     private RateLimit rateLimit = new RateLimit();
@@ -41,10 +44,33 @@ public class TalentflowProperties {
 
     @Getter
     @Setter
+    public static class OpenAi {
+        private String apiKey;
+        private String model;
+        private String baseUrl;
+    }
+
+    @Getter
+    @Setter
+    public static class Anthropic {
+        private String apiKey;
+        private String model;
+        private String baseUrl;
+    }
+
+    @Getter
+    @Setter
+    public static class Ollama {
+        private String baseUrl;
+        private String model;
+    }
+
+    @Getter
+    @Setter
     public static class Ai {
         /** gemini | fallback — APP_AI_MODE */
         private String mode = "gemini";
-        /** gemini | fallback — AI_PROVIDER */
+        /** gemini | openai | anthropic | ollama | fallback — AI_PROVIDER */
         private String provider = "gemini";
     }
 

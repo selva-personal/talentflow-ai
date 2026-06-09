@@ -1,7 +1,11 @@
 package com.talentflow.api.controller;
 
+import com.talentflow.api.ai.AiDiagnosticsService;
+import com.talentflow.api.ai.provider.AiProviderConfigService;
+import com.talentflow.api.dto.request.AiProviderSwitchRequest;
 import com.talentflow.api.dto.response.ApiResponse;
 import com.talentflow.api.service.AdminService;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +23,8 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AiProviderConfigService aiProviderConfigService;
+    private final AiDiagnosticsService aiDiagnosticsService;
 
     @GetMapping("/dashboard")
     @Operation(summary = "Admin dashboard statistics")
@@ -62,6 +68,27 @@ public class AdminController {
     @Operation(summary = "AI provider status")
     public ResponseEntity<ApiResponse<Map<String, Object>>> aiStatus() {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getAiStatus()));
+    }
+
+    @GetMapping("/ai-providers")
+    @Operation(summary = "All AI provider diagnostics")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> aiProviders() {
+        return ResponseEntity.ok(ApiResponse.ok(aiDiagnosticsService.getDiagnostics()));
+    }
+
+    @PostMapping("/ai-provider")
+    @Operation(summary = "Switch preferred AI provider")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> switchProvider(
+            @Valid @RequestBody AiProviderSwitchRequest request) {
+        aiProviderConfigService.setPreferredProvider(request.getProvider());
+        return ResponseEntity.ok(ApiResponse.ok(aiDiagnosticsService.getDiagnostics()));
+    }
+
+    @PostMapping("/ai-providers/probe")
+    @Operation(summary = "Probe all AI providers")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> probeAllProviders() {
+        return ResponseEntity.ok(ApiResponse.ok(
+                aiDiagnosticsService.probeAllProviders("Reply with exactly: OK")));
     }
 
     @GetMapping("/settings")

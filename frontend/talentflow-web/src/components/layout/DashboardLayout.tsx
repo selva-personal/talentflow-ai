@@ -108,7 +108,7 @@ export function DashboardLayout() {
       }>('/analytics/dashboard'),
   })
 
-  const { data: notifications } = useQuery({
+  const { data: notifications, isLoading: notifLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => apiGet<SpringPage<NotificationItem>>('/notifications?size=20'),
     enabled: notifOpen,
@@ -135,6 +135,8 @@ export function DashboardLayout() {
   const notifList = notifications?.content ?? []
   const isAdmin = user?.role === 'ADMIN'
   const aiFallback = useAiStore((s) => s.fallbackActive)
+  const activeProvider = useAiStore((s) => s.provider)
+  const aiOnline = !aiFallback && activeProvider !== 'fallback'
 
   useQuery({
     queryKey: ['ai-status'],
@@ -144,6 +146,8 @@ export function DashboardLayout() {
         quotaStatus: string
         fallbackActive: boolean
         activeProvider: string
+        lastSuccessfulRequest?: string | null
+        lastFailureReason?: string | null
       }>('/ai/status')
       useAiStore.getState().setStatus(status)
       return status
@@ -158,6 +162,7 @@ export function DashboardLayout() {
       // Continue client logout even if server call fails
     }
     logout()
+    useAiStore.getState().clear()
     queryClient.clear()
     setLogoutOpen(false)
     toast.success('Signed out', 'See you next time!')
@@ -204,7 +209,12 @@ export function DashboardLayout() {
           </button>
           <p className="hidden text-sm text-muted md:block">
             {user?.firstName} {user?.lastName}
-            {aiFallback && (
+            {aiOnline && (
+              <span className="ml-2 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+                Online AI Mode
+              </span>
+            )}
+            {aiFallback && !aiOnline && (
               <span className="ml-2 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
                 Offline AI Mode
               </span>
@@ -297,7 +307,9 @@ export function DashboardLayout() {
             Mark all as read
           </button>
         )}
-        {notifList.length === 0 ? (
+        {notifLoading ? (
+          <p className="text-sm text-muted">Loading notifications…</p>
+        ) : notifList.length === 0 ? (
           <p className="text-sm text-muted">No notifications yet.</p>
         ) : (
           <ul className="space-y-3">

@@ -42,7 +42,18 @@ talentflow:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: gemini-2.0-flash
+    model: ${GEMINI_MODEL:gemini-2.0-flash}
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-4o-mini}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${ANTHROPIC_MODEL:claude-3-5-haiku-20241022}
+    base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}
+  ollama:
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_MODEL:llama3.2}
   ai:
     mode: ${APP_AI_MODE:gemini}
     provider: ${AI_PROVIDER:gemini}

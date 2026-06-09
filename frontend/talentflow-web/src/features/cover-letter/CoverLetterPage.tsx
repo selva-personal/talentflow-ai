@@ -4,6 +4,9 @@ import { apiPost, getApiError } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
+import { FileText } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/ui/form-field'
 import { Select } from '@/components/ui/select'
@@ -80,7 +83,24 @@ export function CoverLetterPage() {
         </Button>
       </Card>
 
-      {content && (
+      {generate.isPending && (
+        <Card className="mt-8">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="mt-4 h-48 w-full" />
+        </Card>
+      )}
+
+      {!content && !generate.isPending && (
+        <div className="mt-8">
+          <EmptyState
+            icon={FileText}
+            title="No cover letter yet"
+            description="Fill in the form above and click Generate."
+          />
+        </div>
+      )}
+
+      {content && !generate.isPending && (
         <Card className="mt-8">
           <FormField label="Generated letter">
             <pre className="whitespace-pre-wrap font-sans text-sm">{content}</pre>

@@ -30,7 +30,7 @@ export function ResumePage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
-  const { data: resumes, isLoading } = useQuery({
+  const { data: resumes, isLoading, isError } = useQuery({
     queryKey: ['resumes'],
     queryFn: () => apiGet<SpringPage<{ id: number; fileName: string; createdAt: string }>>('/resumes'),
   })
@@ -127,14 +127,17 @@ export function ResumePage() {
       <h2 className="mt-10 text-xl font-semibold">Recent uploads</h2>
       <div className="mt-4">
         {isLoading && <Skeleton className="h-24 w-full rounded-2xl" />}
-        {!isLoading && (resumes?.content?.length ?? 0) === 0 && (
+        {isError && (
+          <EmptyState icon={FileText} title="Could not load resumes" description="Please refresh or try again." />
+        )}
+        {!isLoading && !isError && (resumes?.content?.length ?? 0) === 0 && (
           <EmptyState
             icon={FileText}
             title="No resumes yet"
             description="Upload your first PDF to get an ATS analysis."
           />
         )}
-        {!isLoading && (resumes?.content?.length ?? 0) > 0 && (
+        {!isLoading && !isError && (resumes?.content?.length ?? 0) > 0 && (
           <Card>
             <ul className="divide-y divide-border">
               {resumes!.content.map((r) => (

@@ -343,6 +343,11 @@ public class FallbackAiService {
         arr.add(node);
     }
 
+    public String generateTestReply(String prompt) {
+        return "Why did the developer go offline? Because Gemini quota was exhausted! "
+                + "(Offline fallback response to: \"" + (prompt != null ? prompt.trim() : "") + "\")";
+    }
+
     private void addPhase(ArrayNode arr, String phase, List<String> topics, int weeks) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("phase", phase);

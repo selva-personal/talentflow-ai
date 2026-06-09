@@ -1,5 +1,6 @@
 package com.talentflow.api.config;
 
+import com.talentflow.api.ai.ApiKeyUtils;
 import com.talentflow.api.entity.Role;
 import com.talentflow.api.entity.User;
 import com.talentflow.api.exception.ResourceNotFoundException;
@@ -33,7 +34,10 @@ public class DataInitializer implements ApplicationRunner {
         if (geminiApiKey == null || geminiApiKey.isBlank()) {
             log.warn("GEMINI_API_KEY is not set — AI features will fail. Add it to backend/talentflow-api/.env or use ./scripts/run-backend.sh");
         } else {
-            log.info("Gemini API key loaded ({} chars)", geminiApiKey.length());
+            log.info("Gemini API key loaded: masked={} format={} length={}",
+                    ApiKeyUtils.mask(geminiApiKey),
+                    ApiKeyUtils.describeFormat(geminiApiKey),
+                    geminiApiKey.trim().length());
         }
 
         if (userRepository.findByEmail(ADMIN_EMAIL).isPresent()) {
